@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: raftflow
+  labels:
+    app: raftflow
+spec:
+  serviceName: raftflow
+  replicas: 3
+  selector:
+    matchLabels:
+      app: raftflow
+  template:
+    metadata:
+      labels:
+        app: raftflow
+    spec:
+      containers:
+      - name: raftflow
+        image: ghcr.io/bksmick12/raftflow:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: raft
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ADDRESS
+          value: "$(NODE_ID).raftflow.default.svc.cluster.local:8080"
+        - name: PEERS
+          value: "raftflow-0.raftflow.default.svc.cluster.local:8080,raftflow-1.raftflow.default.svc.cluster.local:8080,raftflow-2.raftflow.default.svc.cluster.local:8080"
+        - name: LOG_DIR
+          value: "/data/log"
+        - name: SNAPSHOT_DIR
+          value: "/data/snapshot"
+        - name: ENABLE_METRICS
+          value: "true"
+        - name: METRICS_ADDRESS
+          value: ":9090"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: data
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: raftflow
+  labels:
+    app: raftflow
+spec:
+  clusterIP: None
+  ports:
+  - port: 8080
+    name: raft
+  - port: 9090
+    name: metrics
+  selector:
+    app: raftflow
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: raftflow-metrics
+  labels:
+    app: raftflow
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    name: metrics
+    targetPort: 9090
+  selector:
+    app: raftflow
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: raftflow-monitor
+  labels:
+    app: raftflow
+spec:
+  selector:
+    matchLabels:
+      app: raftflow
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics

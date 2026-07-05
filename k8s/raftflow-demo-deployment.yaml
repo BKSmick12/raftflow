@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: raftflow-demo
+  labels:
+    app: raftflow-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: raftflow-demo
+  template:
+    metadata:
+      labels:
+        app: raftflow-demo
+    spec:
+      containers:
+      - name: raftflow-demo
+        image: ghcr.io/bksmick12/raftflow-demo:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: demo
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: CLUSTER_SIZE
+          value: "3"
+        - name: BASE_PORT
+          value: "8080"
+        - name: BASE_METRICS_PORT
+          value: "9090"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: raftflow-demo
+  labels:
+    app: raftflow-demo
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8081
+    name: demo
+    targetPort: 8081
+  - port: 9090
+    name: metrics
+    targetPort: 9090
+  selector:
+    app: raftflow-demo
